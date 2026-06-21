@@ -1,6 +1,6 @@
 [project]
 name = "llm-pulse"
-version = "0.1.0"
+version = "0.2.0"
 description = "A lightweight metrics exporter for LiteLLM — scrapes Prometheus metrics and serves JSON for dashboards like Homepage and Home Assistant."
 readme = "README.md"
 requires-python = ">=3.11"

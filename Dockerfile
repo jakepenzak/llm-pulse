@@ -9,6 +9,10 @@ COPY llm_pulse/ llm_pulse/
 
 RUN uv sync --no-dev
 
+RUN mkdir -p /app/data
+
+VOLUME /app/data
+
 EXPOSE 8000
 
 CMD ["uv", "run", "llm-pulse"]

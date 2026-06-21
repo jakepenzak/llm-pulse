@@ -5,16 +5,24 @@ services:
     container_name: llm-pulse
     restart: unless-stopped
     environment:
-      METRICS_URL: "http://litellm:4000/metrics/"
-      SCRAPE_INTERVAL: "60"
-      PORT: "8000"
-      VERIFY_SSL: "false"
-      LOG_LEVEL: "info"
+      LLM_PULSE_METRICS_URL: "http://litellm:4000/metrics/"
+      LLM_PULSE_SCRAPE_INTERVAL: "60"
+      LLM_PULSE_PORT: "8000"
+      LLM_PULSE_VERIFY_SSL: "false"
+      LLM_PULSE_LOG_LEVEL: "info"
+      LLM_PULSE_DB_PATH: "/app/data/llm_pulse.db"
+      LLM_PULSE_DB_RETENTION_DAYS: "90"
+      LLM_PULSE_HISTORY_SIZE: "168"
       # Override metric mappings (optional, shown with defaults):
-      # METRIC_REQUESTS: "litellm_proxy_total_requests_metric_total"
-      # METRIC_TOKENS: "litellm_total_tokens_metric_total"
-      # METRIC_COST: "litellm_spend_metric_total"
+      # LLM_PULSE_METRIC_REQUESTS: "litellm_proxy_total_requests_metric_total"
+      # LLM_PULSE_METRIC_TOKENS: "litellm_total_tokens_metric_total"
+      # LLM_PULSE_METRIC_COST: "litellm_spend_metric_total"
     ports:
       - "8000:8000"
+    volumes:
+      - llm-pulse-data:/app/data
     # networks:
     #   - your-network
+
+volumes:
+  llm-pulse-data:

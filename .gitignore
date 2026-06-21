@@ -5,3 +5,7 @@ __pycache__/
 .ruff_cache/
 dist/
 build/
+data/
+*.db
+*.db-wal
+*.db-shm
