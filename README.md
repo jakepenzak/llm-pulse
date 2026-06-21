@@ -8,7 +8,6 @@
 [![Development Status](https://img.shields.io/badge/status-beta-yellow)](https://github.com/jakepenzak/llm-pulse)
 
 [![CI](https://github.com/jakepenzak/llm-pulse/actions/workflows/ci.yml/badge.svg)](https://github.com/jakepenzak/llm-pulse/actions/workflows/ci.yml)
-[![Release Please](https://github.com/jakepenzak/llm-pulse/actions/workflows/release-please.yml/badge.svg)](https://github.com/jakepenzak/llm-pulse/actions/workflows/release-please.yml)
 [![Release](https://github.com/jakepenzak/llm-pulse/actions/workflows/release.yml/badge.svg)](https://github.com/jakepenzak/llm-pulse/actions/workflows/release.yml)
 
 </center>
@@ -238,32 +237,67 @@ Add a service entry in `services.yaml` with a `customapi` widget:
 
 ### Home Assistant (REST Sensors)
 
-Add RESTful sensors to `configuration.yaml`:
+Add RESTful sensors to `configuration.yaml`. The [`rest`](https://www.home-assistant.io/integrations/rest) integration lets you define multiple sensors from a single HTTP request, which avoids polling the LLM Pulse endpoint more than necessary:
 
 ```yaml
 rest:
   - resource: http://llm-pulse:8000/api/v1/metrics
-    scan_interval: 60
+    scan_interval: 60        # seconds between polls (default: 30)
+    timeout: 10              # seconds before the sensor is marked unavailable
+    verify_ssl: true
     sensor:
       - name: LiteLLM Requests
+        unique_id: litellm_requests
         value_template: "{{ value_json.requests }}"
         unit_of_measurement: "req"
+        device_class: duration
+        state_class: total_increasing
       - name: LiteLLM Tokens
+        unique_id: litellm_tokens
         value_template: "{{ value_json.tokens }}"
         unit_of_measurement: "tokens"
+        state_class: total_increasing
       - name: LiteLLM Spend
+        unique_id: litellm_spend
         value_template: "{{ value_json.cost }}"
-        unit_of_measurement: "$"
+        unit_of_measurement: "USD"
+        state_class: total_increasing
       - name: LiteLLM Spend Today
+        unique_id: litellm_spend_today
         value_template: "{{ value_json.cost_daily }}"
-        unit_of_measurement: "$"
+        unit_of_measurement: "USD"
+        state_class: measurement
+        force_update: true
       - name: LiteLLM Spend This Month
+        unique_id: litellm_spend_this_month
         value_template: "{{ value_json.cost_monthly }}"
-        unit_of_measurement: "$"
+        unit_of_measurement: "USD"
+        state_class: measurement
+        force_update: true
       - name: LiteLLM Tokens Today
+        unique_id: litellm_tokens_today
         value_template: "{{ value_json.tokens_daily }}"
         unit_of_measurement: "tokens"
+        state_class: measurement
+        force_update: true
 ```
+
+If you only need a single metric, you can use the [`sensor.rest`](https://www.home-assistant.io/integrations/sensor.rest/) platform instead, which polls the endpoint once per sensor:
+
+```yaml
+sensor:
+  - platform: rest
+    resource: http://llm-pulse:8000/api/v1/metrics/cost_daily
+    name: LiteLLM Spend Today
+    unique_id: litellm_spend_today
+    value_template: "{{ value_json.value }}"
+    unit_of_measurement: "USD"
+    state_class: measurement
+    force_update: true
+```
+
+> **Tip:** To refresh a sensor on demand (outside the polling schedule), call the `homeassistant.update_entity` action targeting the sensor entity.
+
 
 ## Contributing
 
