@@ -1,16 +1,18 @@
-# LLM Pulse
+<p align="center">
+  <img src="https://raw.githubusercontent.com/jakepenzak/llm-pulse/main/llm-pulse.svg" alt="LLM Pulse" width="320">
+</p>
 
-<center>
+<p align="center">
+  <a href="https://github.com/jakepenzak/llm-pulse/releases"><img src="https://img.shields.io/github/v/release/jakepenzak/llm-pulse" alt="GitHub release"></a>
+  <a href="https://www.python.org/downloads/"><img src="https://img.shields.io/badge/python-3.11+-blue" alt="Python 3.11+"></a>
+  <a href="https://github.com/jakepenzak/llm-pulse/blob/main/LICENSE"><img src="https://img.shields.io/github/license/jakepenzak/llm-pulse" alt="License: MIT"></a>
+  <a href="https://github.com/jakepenzak/llm-pulse"><img src="https://img.shields.io/badge/status-beta-yellow" alt="Development Status"></a>
+  <br>
+  <a href="https://github.com/jakepenzak/llm-pulse/actions/workflows/ci.yml"><img src="https://github.com/jakepenzak/llm-pulse/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
+  <a href="https://github.com/jakepenzak/llm-pulse/actions/workflows/release.yml"><img src="https://github.com/jakepenzak/llm-pulse/actions/workflows/release.yml/badge.svg" alt="Release"></a>
+</p>
 
-[![GitHub release (latest by date)](https://img.shields.io/github/v/release/jakepenzak/llm-pulse)](https://github.com/jakepenzak/llm-pulse/releases)
-[![Python 3.11+](https://img.shields.io/badge/python-3.11+-blue)](https://www.python.org/downloads/)
-[![License: MIT](https://img.shields.io/github/license/jakepenzak/llm-pulse)](https://github.com/jakepenzak/llm-pulse/blob/main/LICENSE)
-[![Development Status](https://img.shields.io/badge/status-beta-yellow)](https://github.com/jakepenzak/llm-pulse)
 
-[![CI](https://github.com/jakepenzak/llm-pulse/actions/workflows/ci.yml/badge.svg)](https://github.com/jakepenzak/llm-pulse/actions/workflows/ci.yml)
-[![Release](https://github.com/jakepenzak/llm-pulse/actions/workflows/release.yml/badge.svg)](https://github.com/jakepenzak/llm-pulse/actions/workflows/release.yml)
-
-</center>
 
 A lightweight metrics exporter for [LiteLLM](https://github.com/BerriAI/litellm) — scrapes Prometheus metrics, stores them in SQLite, and serves JSON for dashboards like [Homepage](https://gethomepage.dev) and home automation systems like [Home Assistant](https://www.home-assistant.io).
 
