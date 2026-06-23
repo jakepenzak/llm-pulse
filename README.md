@@ -463,3 +463,15 @@ volumes:
 ## License
 
 MIT — see [LICENSE](LICENSE).
+
+---
+
+## Disclaimer
+
+LiteLLM Pulse is an independent, community-developed project created to provide monitoring and analytics for LiteLLM deployments.
+
+This project is **not affiliated with, endorsed by, sponsored by, or maintained by** LiteLLM or Berri AI.
+
+"LiteLLM" and any associated trademarks, service marks, logos, or trade names are the property of their respective owners and are used here solely to identify compatibility with the LiteLLM ecosystem.
+
+---
