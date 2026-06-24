@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import logging
 import sqlite3
-from datetime import UTC, datetime
+from datetime import UTC, datetime, tzinfo
 from pathlib import Path
 
 logger = logging.getLogger("litellm-pulse")
@@ -123,15 +123,18 @@ def get_window_aggregate(conn: sqlite3.Connection, start_ts: int) -> dict[str, f
     return {k: row[k] for k in METRIC_KEYS}
 
 
-def get_history(conn: sqlite3.Connection, limit: int = 168) -> list[dict]:
+def get_history(conn: sqlite3.Connection, limit: int = 168, tz: tzinfo = UTC) -> list[dict]:
     """Return the most recent ``limit`` scrape snapshots as a list of dicts.
 
     Args:
         conn: SQLite connection.
         limit: Maximum number of snapshots to return.
+        tz: Timezone to use when formatting the ``timestamp`` field (the DB
+            always stores UTC Unix timestamps; conversion happens here).
 
     Returns:
-        List of dicts, each with ``ts``, ``is_reset``, raw values, and delta values.
+        List of dicts, each with ``timestamp`` (ISO string in ``tz``),
+        ``is_reset``, raw values, and delta values.
     """
     rows = conn.execute(
         f"SELECT ts, is_reset, {', '.join(f'raw_{k}' for k in METRIC_KEYS)}, "
@@ -143,7 +146,7 @@ def get_history(conn: sqlite3.Connection, limit: int = 168) -> list[dict]:
     results = []
     for row in rows:
         entry: dict[str, float | int | str] = {
-            "timestamp": datetime.fromtimestamp(row["ts"], tz=UTC).isoformat(),
+            "timestamp": datetime.fromtimestamp(row["ts"], tz=tz).isoformat(),
             "is_reset": bool(row["is_reset"]),
         }
         for k in METRIC_KEYS:

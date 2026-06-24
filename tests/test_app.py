@@ -1,6 +1,7 @@
 """Tests for the FastAPI application endpoints."""
 
 from datetime import UTC, datetime
+from zoneinfo import ZoneInfo
 
 import pytest
 from httpx import ASGITransport, AsyncClient
@@ -161,3 +162,132 @@ class TestErrorState:
         response = await async_client.get("/api/v1/metrics")
         data = response.json()
         assert data["error"] == "Connection refused"
+
+
+class TestTimezoneFormatting:
+    @pytest.mark.asyncio
+    async def test_last_scrape_uses_configured_tz(self, async_client):
+        # _last_scrape is set to UTC in the fixture; verify the offset matches _TZ
+        response = await async_client.get("/api/v1/metrics")
+        data = response.json()
+        ts = data["last_scrape"]
+        # Default _TZ is UTC at module load unless LITELLM_PULSE_TIMEZONE is set
+        expected_offset = datetime.now(app_module._TZ).strftime("%z")
+        # Convert +0000 -> +00:00 format as isoformat produces
+        expected = f"{expected_offset[:3]}:{expected_offset[3:]}" if expected_offset else "+00:00"
+        assert ts.endswith(expected)
+
+    @pytest.mark.asyncio
+    async def test_last_scrape_converts_to_non_utc_tz(self, async_client):
+        original_tz = app_module._TZ
+        try:
+            app_module._TZ = ZoneInfo("America/New_York")
+            response = await async_client.get("/api/v1/metrics")
+            data = response.json()
+            ts = data["last_scrape"]
+            # In June (EDT) offset is -04:00; in Jan (EST) it's -05:00
+            assert ts.endswith("-04:00") or ts.endswith("-05:00")
+        finally:
+            app_module._TZ = original_tz
+
+    @pytest.mark.asyncio
+    async def test_get_metric_last_scrape_uses_tz(self, async_client):
+        original_tz = app_module._TZ
+        try:
+            app_module._TZ = ZoneInfo("America/New_York")
+            response = await async_client.get("/api/v1/metrics/cost")
+            data = response.json()
+            ts = data["last_scrape"]
+            assert ts.endswith("-04:00") or ts.endswith("-05:00")
+        finally:
+            app_module._TZ = original_tz
+
+
+class TestWindowBoundariesWithTimezone:
+    def test_start_of_day_respects_tz(self, monkeypatch):
+        from litellm_pulse import app as app_mod
+
+        original_tz = app_mod._TZ
+        try:
+            # Use America/New_York. If it's 04:00 UTC, that's 00:00 EDT (previous day).
+            # We mock datetime.now to a fixed value to make the test deterministic.
+            app_mod._TZ = ZoneInfo("America/New_York")
+
+            fixed_utc = datetime(2025, 6, 21, 4, 0, 0, tzinfo=UTC)
+
+            class FakeDatetime:
+                @classmethod
+                def now(cls, tz=None):
+                    if tz is None:
+                        return fixed_utc.replace(tzinfo=None)
+                    return fixed_utc.astimezone(tz)
+
+            monkeypatch.setattr(app_mod, "datetime", FakeDatetime)
+
+            start = app_mod._start_of_day()
+            # 00:00 EDT on June 21 = 04:00 UTC on June 21
+            assert start == int(datetime(2025, 6, 21, 4, 0, 0, tzinfo=UTC).timestamp())
+        finally:
+            app_mod._TZ = original_tz
+
+    def test_start_of_month_respects_tz(self, monkeypatch):
+        from litellm_pulse import app as app_mod
+
+        original_tz = app_mod._TZ
+        try:
+            app_mod._TZ = ZoneInfo("America/New_York")
+
+            # 02:00 UTC on July 1 = 22:00 EDT on June 30 -> "today" is still June 30 in NY
+            fixed_utc = datetime(2025, 7, 1, 2, 0, 0, tzinfo=UTC)
+
+            class FakeDatetime:
+                @classmethod
+                def now(cls, tz=None):
+                    if tz is None:
+                        return fixed_utc.replace(tzinfo=None)
+                    return fixed_utc.astimezone(tz)
+
+            monkeypatch.setattr(app_mod, "datetime", FakeDatetime)
+
+            start = app_mod._start_of_month()
+            # Start of June in NY = 00:00 EDT June 1 = 04:00 UTC June 1
+            assert start == int(datetime(2025, 6, 1, 4, 0, 0, tzinfo=UTC).timestamp())
+        finally:
+            app_mod._TZ = original_tz
+
+
+class TestHistoryTimezoneInMemory:
+    @pytest.mark.asyncio
+    async def test_in_memory_history_converts_timestamp(self, async_client):
+        from collections import deque
+
+        original_tz = app_module._TZ
+        original_history = app_module._history
+        try:
+            app_module._TZ = ZoneInfo("America/New_York")
+            app_module._history = deque(
+                [
+                    {
+                        "ts": int(datetime(2025, 6, 21, 12, 0, 0, tzinfo=UTC).timestamp()),
+                        "is_reset": False,
+                        "requests": 100.0,
+                        "requests_delta": 10.0,
+                    }
+                ],
+                maxlen=168,
+            )
+            app_module._db = None
+
+            response = await async_client.get("/api/v1/history")
+            data = response.json()
+            assert data["source"] == "memory"
+            assert data["count"] == 1
+            ts = data["snapshots"][0]["timestamp"]
+            # UTC 12:00 in June (EDT) is 08:00 local
+            assert "08:00:00" in ts
+            assert "-04:00" in ts
+            # ts field should not leak
+            assert "ts" not in data["snapshots"][0]
+        finally:
+            app_module._TZ = original_tz
+            app_module._history = original_history

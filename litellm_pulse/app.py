@@ -7,8 +7,9 @@ import logging
 import os
 from collections import deque
 from contextlib import asynccontextmanager, suppress
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, datetime, timedelta, tzinfo
 from typing import Any
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 import httpx
 import uvicorn
@@ -43,6 +44,16 @@ DB_PATH = os.environ.get("LITELLM_PULSE_DB_PATH", "./data/litellm_pulse.db")
 DB_RETENTION_DAYS = int(os.environ.get("LITELLM_PULSE_DB_RETENTION_DAYS", "90"))
 HISTORY_SIZE = int(os.environ.get("LITELLM_PULSE_HISTORY_SIZE", "168"))
 METRICS_API_KEY = os.environ.get("LITELLM_PULSE_METRICS_API_KEY", "")
+
+# Timezone for API output and window boundaries. DB always stores UTC.
+_TZ: tzinfo = UTC
+_tz_name = os.environ.get("LITELLM_PULSE_TIMEZONE", "UTC")
+try:
+    _TZ = ZoneInfo(_tz_name)
+except ZoneInfoNotFoundError:
+    logger.warning("Unknown timezone %r — falling back to UTC", _tz_name)
+except Exception:
+    logger.exception("Failed to load timezone %r — falling back to UTC", _tz_name)
 
 # Default metric mappings — LiteLLM Prometheus metric names.
 # Each can be overridden via env var LITELLM_PULSE_METRIC_<FRIENDLY_NAME>.
@@ -110,21 +121,26 @@ def _compute_deltas(
 # ---------------------------------------------------------------------------
 
 
+def _format_ts(ts: int | float) -> str:
+    """Format a UTC Unix timestamp as an ISO 8601 string in the configured timezone."""
+    return datetime.fromtimestamp(ts, tz=_TZ).isoformat()
+
+
 def _start_of_day() -> int:
-    now = datetime.now(UTC)
+    now = datetime.now(_TZ)
     start = now.replace(hour=0, minute=0, second=0, microsecond=0)
     return int(start.timestamp())
 
 
 def _start_of_week() -> int:
-    now = datetime.now(UTC)
+    now = datetime.now(_TZ)
     start_of_day = now.replace(hour=0, minute=0, second=0, microsecond=0)
     start = start_of_day - timedelta(days=start_of_day.weekday())
     return int(start.timestamp())
 
 
 def _start_of_month() -> int:
-    now = datetime.now(UTC)
+    now = datetime.now(_TZ)
     start = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
     return int(start.timestamp())
 
@@ -161,7 +177,7 @@ async def _scrape(client: httpx.AsyncClient) -> None:
 
         if _history is not None:
             entry: dict[str, Any] = {
-                "timestamp": now.isoformat(),
+                "ts": int(now.timestamp()),
                 "is_reset": is_reset,
             }
             for friendly, prom_name in METRIC_MAP.items():
@@ -235,10 +251,11 @@ async def lifespan(_app: FastAPI):
     scrape_task = asyncio.create_task(_scraper_loop())
     purge_task = asyncio.create_task(_purge_loop())
     logger.info(
-        "LiteLLM Pulse started — scraping %s every %ds, DB: %s, auth: %s",
+        "LiteLLM Pulse started — scraping %s every %ds, DB: %s, timezone: %s, auth: %s",
         METRICS_URL,
         SCRAPE_INTERVAL,
         DB_PATH if _db else "disabled",
+        str(_TZ),
         "enabled" if METRICS_API_KEY and METRICS_API_KEY.strip() else "disabled",
     )
     yield
@@ -280,7 +297,7 @@ def _summary() -> dict:
             data[f"{friendly}_weekly"] = 0.0
             data[f"{friendly}_monthly"] = 0.0
 
-    data["last_scrape"] = _last_scrape.isoformat() if _last_scrape else None
+    data["last_scrape"] = _format_ts(_last_scrape.timestamp()) if _last_scrape else None
     data["source"] = METRICS_URL
     if _last_error:
         data["error"] = _last_error
@@ -308,14 +325,14 @@ async def get_metric(name: str):
             return {
                 "name": name,
                 "value": _summary().get(name, 0.0),
-                "last_scrape": _last_scrape.isoformat() if _last_scrape else None,
+                "last_scrape": _format_ts(_last_scrape.timestamp()) if _last_scrape else None,
             }
     if name in valid_names:
         prom_name = METRIC_MAP[name]
         return {
             "name": name,
             "value": _raw_metrics.get(prom_name, 0.0),
-            "last_scrape": _last_scrape.isoformat() if _last_scrape else None,
+            "last_scrape": _format_ts(_last_scrape.timestamp()) if _last_scrape else None,
         }
     return JSONResponse(
         status_code=404,
@@ -329,14 +346,18 @@ async def get_metric(name: str):
 @app.get("/api/v1/history")
 async def history(limit: int = 168):
     if _db is not None:
-        snapshots = get_history(_db, limit=limit)
+        snapshots = get_history(_db, limit=limit, tz=_TZ)
         return {
             "snapshots": snapshots,
             "count": len(snapshots),
             "source": "sqlite",
         }
     if _history is not None:
-        snapshots = list(_history)
+        snapshots = []
+        for entry in list(_history)[-limit:]:
+            out = {k: v for k, v in entry.items() if k != "ts"}
+            out["timestamp"] = _format_ts(entry["ts"])
+            snapshots.append(out)
         return {
             "snapshots": snapshots,
             "count": len(snapshots),

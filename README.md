@@ -74,6 +74,7 @@ services:
       LITELLM_PULSE_METRICS_URL: "http://litellm:4000/metrics/"
       LITELLM_PULSE_SCRAPE_INTERVAL: "60"
       LITELLM_PULSE_PORT: "8000"
+      LITELLM_PULSE_TIMEZONE: "America/New_York"
       # LITELLM_PULSE_METRICS_API_KEY: "sk-your-litellm-api-key"
     ports:
       - "8000:8000"
@@ -106,6 +107,7 @@ All configuration is via environment variables prefixed with `LITELLM_PULSE_`. N
 | `LITELLM_PULSE_VERIFY_SSL` | `false` | Whether to verify TLS certificates when scraping |
 | `LITELLM_PULSE_SCRAPE_TIMEOUT` | `30` | Request timeout in seconds |
 | `LITELLM_PULSE_LOG_LEVEL` | `info` | Log level (`debug`, `info`, `warning`, `error`) |
+| `LITELLM_PULSE_TIMEZONE` | `UTC` | Timezone for API timestamps and day/week/month boundaries (IANA name, e.g. `America/New_York`) |
 | `LITELLM_PULSE_METRICS_API_KEY` | _(empty)_ | LiteLLM API key for authenticated `/metrics` endpoints. Only needed if your LiteLLM proxy has [`require_auth_for_metrics_endpoint`](https://docs.litellm.ai/docs/proxy/prometheus#add-authentication-on-metrics-endpoint) set to `true`. |
 
 > **When to use `LITELLM_PULSE_METRICS_API_KEY`:** If your LiteLLM proxy config includes `require_auth_for_metrics_endpoint: true` under `litellm_settings`, the `/metrics` endpoint requires authentication via a `Bearer` token. Set `LITELLM_PULSE_METRICS_API_KEY` to a valid LiteLLM API key so LiteLLM Pulse can authenticate. If this variable is left empty (the default), no `Authorization` header is sent — matching the default unauthenticated LiteLLM behavior.
@@ -117,6 +119,8 @@ All configuration is via environment variables prefixed with `LITELLM_PULSE_`. N
 | `LITELLM_PULSE_DB_PATH` | `./data/litellm_pulse.db` | Path to the SQLite database file |
 | `LITELLM_PULSE_DB_RETENTION_DAYS` | `90` | Auto-purge data older than N days (hourly purge cycle) |
 | `LITELLM_PULSE_HISTORY_SIZE` | `168` | Max snapshots in the in-memory ring buffer (used as fallback if DB is unavailable) |
+
+> **Timezone note:** The database always stores timestamps as UTC. The `LITELLM_PULSE_TIMEZONE` setting only affects API output (timestamps are converted to the configured timezone) and aggregate window boundaries (daily/weekly/monthly resets are computed against the configured timezone's midnight/Monday/1st). Set it to any valid [IANA timezone name](https://en.wikipedia.org/wiki/List_of_tz_database_time_zones) (e.g. `America/New_York`, `Europe/London`). Invalid values fall back to UTC with a warning.
 
 ### Metric Mappings
 
@@ -168,9 +172,9 @@ Every tracked metric gets `_daily`, `_weekly`, and `_monthly` suffixes:
 | Suffix | Meaning |
 |---|---|
 | _(none)_ | Cumulative total since LiteLLM started (raw counter value) |
-| `_daily` | Sum of deltas since start of today (UTC midnight) |
-| `_weekly` | Sum of deltas since start of this week (Monday UTC) |
-| `_monthly` | Sum of deltas since start of this month (1st UTC) |
+| `_daily` | Sum of deltas since start of today (midnight in the configured timezone) |
+| `_weekly` | Sum of deltas since start of this week (Monday in the configured timezone) |
+| `_monthly` | Sum of deltas since start of this month (1st in the configured timezone) |
 
 ### `GET /api/v1/metrics/{name}`
 

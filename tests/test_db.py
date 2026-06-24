@@ -1,6 +1,8 @@
 """Tests for the SQLite time-series storage module."""
 
 import time
+from datetime import UTC, datetime
+from zoneinfo import ZoneInfo
 
 import pytest
 
@@ -200,3 +202,22 @@ class TestPurgeOld:
     def test_empty_db(self, db):
         deleted = purge_old(db, retention_days=30)
         assert deleted == 0
+
+
+class TestGetHistoryTimezone:
+    def test_default_tz_is_utc(self, db):
+        ts = int(datetime(2025, 6, 21, 12, 0, 0, tzinfo=UTC).timestamp())
+        store_snapshot(db, ts, _make_raw(requests=1), _make_deltas(), False)
+
+        history = get_history(db, limit=1)
+        assert history[0]["timestamp"].endswith("+00:00")
+
+    def test_custom_tz_converts_timestamp(self, db):
+        ts = int(datetime(2025, 6, 21, 12, 0, 0, tzinfo=UTC).timestamp())
+        store_snapshot(db, ts, _make_raw(requests=1), _make_deltas(), False)
+
+        ny = ZoneInfo("America/New_York")
+        history = get_history(db, limit=1, tz=ny)
+        # UTC 12:00 in June (EDT, UTC-4) is 08:00 local
+        assert "08:00:00" in history[0]["timestamp"]
+        assert "-04:00" in history[0]["timestamp"]
