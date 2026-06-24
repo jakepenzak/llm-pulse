@@ -1,51 +1,56 @@
 name: CI
 
 on:
-    push:
-        branches: [main]
-    pull_request:
-        branches: [main]
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
 
 permissions:
-    contents: read
+  contents: read
 
 jobs:
-    lint:
-        name: Lint & Format
-        runs-on: ubuntu-latest
-        steps:
-            - uses: actions/checkout@v4
+  lint:
+    name: Lint & Format
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
 
-            - name: Set up Python
-              uses: actions/setup-python@v5
-              with:
-                  python-version: "3.12"
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
 
-            - name: Install pre-commit
-              run: pip install pre-commit
+      - name: Install uv
+        uses: astral-sh/setup-uv@v6
+        with:
+          version: "latest"
 
-            - name: Run pre-commit
-              run: pre-commit run --all-files
+      - name: Install dependencies
+        run: uv sync --dev
 
-    test:
-        name: Test
-        runs-on: ubuntu-latest
-        strategy:
-            matrix:
-                python-version: ["3.11", "3.12", "3.13", "3.14"]
-        steps:
-            - uses: actions/checkout@v4
+      - name: Run pre-commit
+        run: pre-commit run --all-files
 
-            - name: Install uv
-              uses: astral-sh/setup-uv@v6
-              with:
-                  version: "latest"
+  test:
+    name: Test
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: ["3.11", "3.12", "3.13", "3.14"]
+    steps:
+      - uses: actions/checkout@v4
 
-            - name: Set up Python ${{ matrix.python-version }}
-              run: uv python install ${{ matrix.python-version }}
+      - name: Install uv
+        uses: astral-sh/setup-uv@v6
+        with:
+          version: "latest"
 
-            - name: Install dependencies
-              run: uv sync --dev
+      - name: Set up Python ${{ matrix.python-version }}
+        run: uv python install ${{ matrix.python-version }}
 
-            - name: Run tests
-              run: uv run pytest -v
+      - name: Install dependencies
+        run: uv sync --dev
+
+      - name: Run tests
+        run: uv run pytest -v
