@@ -174,6 +174,27 @@ class TestWindowAggregate:
         result = get_window_aggregate(db, start_ts=1000)
         assert result["requests"] == 30.0
 
+    def test_first_scrape_baseline_does_not_inflate(self, db):
+        store_snapshot(db, 1000, _make_raw(requests=1000, cost=50), _make_deltas(), False)
+        store_snapshot(
+            db,
+            1060,
+            _make_raw(requests=1010, cost=50.5),
+            _make_deltas(requests=10, cost=0.5),
+            False,
+        )
+        store_snapshot(
+            db,
+            1120,
+            _make_raw(requests=1025, cost=51.2),
+            _make_deltas(requests=15, cost=0.7),
+            False,
+        )
+
+        result = get_window_aggregate(db, start_ts=1000)
+        assert result["requests"] == 25.0
+        assert result["cost"] == 1.2
+
     def test_empty_db_returns_zeros(self, db):
         result = get_window_aggregate(db, start_ts=1000)
         for key in METRIC_KEYS:

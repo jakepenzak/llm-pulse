@@ -300,7 +300,7 @@ LiteLLM's Prometheus metrics are **counters** — they grow cumulatively and onl
 
 1. **Each scrape** stores the raw cumulative value and a computed delta (change since the previous scrape).
 2. **Daily/weekly/monthly** values are computed as `SUM(delta)` for all scrapes within the time window.
-3. **Counter reset detection**: If any counter drops by more than 50%, LiteLLM Pulse assumes LiteLLM restarted. The delta for that scrape is set to the current value (treating it as starting from 0), and `is_reset=true` is recorded in the database. This ensures daily/weekly/monthly sums remain correct even across LiteLLM restarts.
+3. **Counter reset detection**: If the primary `requests` counter drops by more than 50%, LiteLLM Pulse assumes LiteLLM restarted. The delta for that scrape is set to the current value (treating it as starting from 0), and `is_reset=true` is recorded in the database. This ensures daily/weekly/monthly sums remain correct even across LiteLLM restarts.
 
 ## State Recovery
 
