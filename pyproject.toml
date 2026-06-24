@@ -53,3 +53,8 @@ select = ["E", "F", "I", "UP", "B", "SIM"]
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
 addopts = "--cov=litellm_pulse/ --cov-branch --cov-report=term-missing --cov-report=html:tests/reports/htmlcov --cov-report=xml:tests/reports/coverage.xml"
+
+[tool.pyright]
+venvPath = "."
+venv = ".venv"
+exclude = ["tests", "notebooks"]
