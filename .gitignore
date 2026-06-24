@@ -13,3 +13,6 @@ data/
 # Test reports
 .coverage
 tests/reports/
+
+# Local files
+.local
