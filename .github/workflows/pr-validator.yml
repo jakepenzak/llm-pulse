@@ -1,7 +1,7 @@
 name: Conventional Commit PR Validator
 
 on:
-  pull_request:
+  pull_request_target:
     types: [opened, edited, reopened]
 
 jobs:
@@ -62,7 +62,6 @@ jobs:
       contents: read
       pull-requests: write
     runs-on: ubuntu-latest
-    if: ${{ github.event.pull_request.head.repo.full_name == github.repository }}
     steps:
       - uses: grafana/pr-labeler-action@50737759cb150f5d312de1a45559027156db8bab
         with:
