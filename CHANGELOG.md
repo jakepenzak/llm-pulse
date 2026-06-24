@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.2.2](https://github.com/jakepenzak/litellm-pulse/compare/v0.2.1...v0.2.2) (2026-06-24)
+
+
+### 🐛 Bug Fixes
+
+* inital scrape stores zero delta on first deploy ([#16](https://github.com/jakepenzak/litellm-pulse/issues/16)) ([8294360](https://github.com/jakepenzak/litellm-pulse/commit/82943608088553c812063a4e9cab1cf2b7b2d695))
+
 ## [0.2.1](https://github.com/jakepenzak/litellm-pulse/compare/v0.2.0...v0.2.1) (2026-06-24)
 
 
