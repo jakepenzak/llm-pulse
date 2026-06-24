@@ -101,7 +101,7 @@ _raw_metrics: dict[str, float] = {}
 _previous_raw: dict[str, float] = {}
 _last_scrape: datetime | None = None
 _last_error: str | None = None
-_history: deque[dict[str, Any]] = deque(maxlen=HISTORY_SIZE) if HISTORY_SIZE > 0 else None
+_history: deque[dict[str, Any]] | None = deque(maxlen=HISTORY_SIZE) if HISTORY_SIZE > 0 else None
 _db: Any = None  # sqlite3.Connection
 
 # Per-model state: {friendly_metric: {model_name: raw_value}}
