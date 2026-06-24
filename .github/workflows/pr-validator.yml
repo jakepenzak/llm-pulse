@@ -12,8 +12,6 @@ jobs:
     runs-on: ubuntu-latest
     env:
       PR_TITLE_RAW: ${{ github.event.pull_request.title }}
-    if: github.event_name != 'pull_request_review' || github.event.review.state == 'approved'
-
     steps:
       - name: Get PR Title
         id: pr_title
