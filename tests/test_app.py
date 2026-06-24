@@ -342,7 +342,7 @@ class TestModelsEndpoint:
         assert data["last_scrape"] is not None
 
     @pytest.mark.asyncio
-    async def test_models_with_db_aggregates(self, async_client):
+    async def test_models_with_db_aggregates(self, async_client, tmp_path):
         import time
 
         from litellm_pulse.db import (
@@ -350,11 +350,7 @@ class TestModelsEndpoint:
             store_model_snapshots,
         )
 
-        db_path = "/tmp/test_models_endpoint.db"
-        import os
-
-        if os.path.exists(db_path):
-            os.remove(db_path)
+        db_path = str(tmp_path / "test_models_endpoint.db")
         conn = open_db(db_path)
         app_module._db = conn
 
@@ -373,5 +369,3 @@ class TestModelsEndpoint:
         finally:
             conn.close()
             app_module._db = None
-            if os.path.exists(db_path):
-                os.remove(db_path)

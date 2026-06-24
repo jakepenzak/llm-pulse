@@ -93,6 +93,9 @@ _MODEL_EXTRA_METRICS: dict[str, str] = {
 _PROM_TO_FRIENDLY: dict[str, str] = {v: k for k, v in METRIC_MAP.items()}
 _PROM_TO_FRIENDLY.update(_MODEL_EXTRA_METRICS)
 
+# Gauge metrics — deltas and window aggregates are meaningless for these.
+_GAUGE_METRICS: set[str] = {"in_flight_requests"}
+
 # ---------------------------------------------------------------------------
 # State
 # ---------------------------------------------------------------------------
@@ -128,6 +131,9 @@ def _compute_deltas(
     """Compute per-metric deltas. On reset, delta is the current value (from 0)."""
     deltas: dict[str, float] = {}
     for friendly, prom_name in METRIC_MAP.items():
+        if friendly in _GAUGE_METRICS:
+            deltas[friendly] = 0.0
+            continue
         curr_val = curr.get(prom_name, 0.0)
         if is_reset:
             deltas[friendly] = curr_val
@@ -224,6 +230,11 @@ async def _scrape(client: httpx.AsyncClient) -> None:
 
         if not _previous_raw:
             deltas = {k: 0.0 for k in METRIC_MAP}
+
+        if not _previous_raw_model_metrics:
+            model_deltas = {
+                metric: {m: 0.0 for m in models} for metric, models in _raw_model_metrics.items()
+            }
 
         if is_reset:
             logger.warning("Counter reset detected — treating as fresh LiteLLM session")
@@ -456,6 +467,7 @@ async def get_metric(name: str):
 
 @app.get("/api/v1/history")
 async def history(limit: int = 168):
+    limit = max(0, min(limit, max(1, HISTORY_SIZE * 12) if HISTORY_SIZE > 0 else 10000))
     if _db is not None:
         snapshots = get_history(_db, limit=limit, tz=_TZ)
         return {

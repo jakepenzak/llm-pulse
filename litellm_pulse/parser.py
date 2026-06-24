@@ -19,7 +19,12 @@ _LABELED_LINE_RE = re.compile(
     r"(?P<value>[-+]?\d*\.?\d+(?:[eE][-+]?\d+)?)"
 )
 
-_LABEL_KV_RE = re.compile(r'(\w+)="([^"]*)"')
+_LABEL_KV_RE = re.compile(r'(\w+)="((?:[^"\\]|\\.)*)"')
+
+
+def _unescape_label_value(value: str) -> str:
+    """Unescape Prometheus label value backslash sequences."""
+    return value.replace('\\"', '"').replace("\\\\", "\\").replace("\\n", "\n")
 
 
 def parse_prometheus_text(text: str) -> dict[str, float]:
@@ -78,7 +83,7 @@ def parse_prometheus_text_with_labels(
         labels_str = match.group("labels")
         if not labels_str:
             continue
-        labels = dict(_LABEL_KV_RE.findall(labels_str))
+        labels = {k: _unescape_label_value(v) for k, v in _LABEL_KV_RE.findall(labels_str)}
         label_val = labels.get(label_key)
         if label_val is None:
             continue

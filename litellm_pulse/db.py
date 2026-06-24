@@ -113,13 +113,16 @@ def store_snapshot(
     """
     raw_cols = ", ".join(f"raw_{k}" for k in METRIC_KEYS)
     delta_cols = ", ".join(f"delta_{k}" for k in METRIC_KEYS)
-    raw_vals = ", ".join(str(raw.get(k, 0.0)) for k in METRIC_KEYS)
-    delta_vals = ", ".join(str(deltas.get(k, 0.0)) for k in METRIC_KEYS)
+    value_placeholders = ", ".join("?" for _ in METRIC_KEYS)
+
+    params: list = [ts, 1 if is_reset else 0]
+    params.extend(raw.get(k, 0.0) for k in METRIC_KEYS)
+    params.extend(deltas.get(k, 0.0) for k in METRIC_KEYS)
 
     conn.execute(
         f"INSERT INTO scrapes (ts, is_reset, {raw_cols}, {delta_cols}) "
-        f"VALUES (?, ?, {raw_vals}, {delta_vals})",
-        (ts, 1 if is_reset else 0),
+        f"VALUES (?, ?, {value_placeholders}, {value_placeholders})",
+        params,
     )
     conn.commit()
 
@@ -217,7 +220,7 @@ def purge_old(conn: sqlite3.Connection, retention_days: int) -> int:
     conn.commit()
     deleted = cursor.rowcount + model_cursor.rowcount
     if deleted:
-        logger.info("Purged %d old scrapes (older than %d days)", deleted, retention_days)
+        logger.info("Purged %d old rows (older than %d days)", deleted, retention_days)
     return deleted
 
 
