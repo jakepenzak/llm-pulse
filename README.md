@@ -99,6 +99,12 @@ docker run -d \
   ghcr.io/jakepenzak/litellm-pulse:latest
 ```
 
+
+> **Pre-release Docker images** are also available with the `:dev` tag:
+> ```bash
+> ghcr.io/jakepenzak/litellm-pulse:dev
+> ```
+
 ### Running Locally (with uv)
 
 ```bash
@@ -112,6 +118,13 @@ uv run litellm-pulse
 uvx litellm-pulse                                # run directly
 uv tool install litellm-pulse && litellm-pulse   # install permanently
 pip install litellm-pulse && litellm-pulse       # with pip
+```
+
+### Running dev/prerelease versions
+
+```bash
+uvx --prerelease=allow litellm-pulse             # uvx with prereleases
+pip install --pre litellm-pulse                  # pip with prereleases
 ```
 
 All of the above accept CLI arguments:
@@ -442,7 +455,7 @@ Contributions are welcome! Please read the guidelines below before opening a pul
 2. Run `uv run pre-commit install` to set up local git hooks
 3. Make your changes, ensuring `pre-commit run --all-files` passes
 4. Add or update tests as appropriate
-5. Open a pull request with a clear description of the changes
+5. Open a pull request **targeting the `main` branch**
 
 ### Conventional Commits
 
@@ -483,15 +496,20 @@ Common scopes: `parser`, `db`, `app`, `ci`, `docker`, `deps`
 
 ### Releases
 
-Releases are managed automatically by [release-please](https://github.com/googleapis/release-please) using the [manifest-driven](https://github.com/googleapis/release-please/blob/main/docs/manifest-releaser.md) approach. Configuration lives in [`.github/release-please-config.json`](.github/release-please-config.json) and version tracking in [`.github/.release-please-manifest.json`](.github/.release-please-manifest.json).
+Releases are managed automatically by [release-please](https://github.com/googleapis/release-please) using the [manifest-driven](https://github.com/googleapis/release-please/blob/main/docs/manifest-releaser.md) approach. Configuration lives in [`.github/release-please-config.json`](.github/release-please-config.json) (stable) and [`.github/release-please-config-prerelease.json`](.github/release-please-config-prerelease.json) (prerelease); version tracking in [`.github/.release-please-manifest.json`](.github/.release-please-manifest.json).
 
-When PRs with conventional commit titles are merged to `main`:
+**Single-branch model:** everything lives on `main`. The [Release workflow](.github/workflows/release.yml) selects the appropriate config based on the trigger:
 
-1. release-please maintains a "release PR" that accumulates changes and updates `CHANGELOG.md`
-2. When the release PR is merged, a new GitHub Release is created with an auto-generated changelog (with emoji section headers)
-3. release-please bumps the version in `pyproject.toml` and `litellm_pulse/__init__.py`
-4. The Docker build & publish workflow is triggered by the `release: published` event
-5. Images are tagged with semantic version (e.g., `v1.2.3`), major/minor aliases (e.g., `1.2`, `1`), and `latest`
+- **Push to `main`** — runs release-please with the **prerelease** config → creates prerelease PRs (`v0.3.0-dev.0`, `v0.3.0-dev.1`, …), Docker tag `dev`, PyPI prerelease packages.
+- **Manual `workflow_dispatch` with `stable_release: true`** — runs release-please with the **stable** config → creates a stable release PR (`v0.3.0`), Docker tags `latest`/`major`/`major.minor`/version, PyPI stable packages.
+
+**Workflow:**
+
+1. PRs are merged to `main` with conventional commit titles
+2. release-please maintains a "release PR" that accumulates changes (prerelease by default)
+3. When the prerelease PR is merged, a GitHub prerelease is created, Docker image is pushed with `dev` tag, and the package is published to PyPI as a prerelease
+4. To cut a stable release, manually trigger the workflow with `stable_release: true` — release-please calculates the next stable version from the last stable tag and creates a release PR
+5. When the stable release PR is merged, images are tagged with semantic version (e.g., `0.3.0`), major/minor aliases (e.g., `0.3`, `0`), and `latest`
 
 ### Setup
 
@@ -504,7 +522,6 @@ make venv                  # sync deps + install pre-commit hooks
 
 ```bash
 uv run litellm-pulse       # run the server locally
-# or: make run
 ```
 
 ### Linting & Formatting
@@ -533,7 +550,7 @@ uv run pytest -v           # run tests
 | Workflow | Trigger | What it does |
 |---|---|---|
 | **CI** ([ci.yml](.github/workflows/ci.yml)) | Push to `main`, PRs | Runs pre-commit (ruff lint + format) and pytest on Python 3.11 & 3.12 |
-| **Release** ([release.yml](.github/workflows/release.yml)) |  Push to `main` | Runs `release-please` suite. On releases created via `release-please`, builds Docker image and publishes to `ghcr.io/jakepenzak/litellm-pulse` with semantic version tags, and publishes the package to PyPI |
+| **Release** ([release.yml](.github/workflows/release.yml)) | Push to `main` / `workflow_dispatch` | `push` → prerelease config (dev tags, PyPI prerelease). `workflow_dispatch` with `stable_release: true` → stable config (semantic versioned Docker tags, PyPI stable). See [Releases](#releases). |
 
 ## License
 
