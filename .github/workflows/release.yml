@@ -27,7 +27,11 @@ jobs:
       - name: Select config
         id: select-config
         run: |
+          COMMIT_MSG="${{ github.event.head_commit.message }}"
           if [ "${{ github.event_name }}" = "workflow_dispatch" ] && [ "${{ github.event.inputs.stable_release }}" = "true" ]; then
+            echo "config-file=.github/release-please-config.json" >> "$GITHUB_OUTPUT"
+            echo "is_stable=true" >> "$GITHUB_OUTPUT"
+          elif echo "$COMMIT_MSG" | grep -q 'release(litellm-pulse):'; then
             echo "config-file=.github/release-please-config.json" >> "$GITHUB_OUTPUT"
             echo "is_stable=true" >> "$GITHUB_OUTPUT"
           else

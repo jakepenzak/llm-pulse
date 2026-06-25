@@ -503,7 +503,7 @@ Releases are managed automatically by [release-please](https://github.com/google
 
 **Single-branch model:** everything lives on `main`. The [Release workflow](.github/workflows/release.yml) selects the appropriate config based on the trigger:
 
-- **Push to `main`** — runs release-please with the **prerelease** config → creates prerelease PRs (`v0.3.0-dev.0`, `v0.3.0-dev.1`, …), Docker tag `dev`, PyPI prerelease packages.
+- **Push to `main`** — runs release-please with the **prerelease** config → creates prerelease PRs (`v0.3.0.dev0`, `v0.3.0.dev1`, …), Docker tag `dev`, PyPI prerelease packages.
 - **Manual `workflow_dispatch` with `stable_release: true`** — runs release-please with the **stable** config → creates a stable release PR (`v0.3.0`), Docker tags `latest`/`major`/`major.minor`/version, PyPI stable packages.
 
 **Workflow:**
