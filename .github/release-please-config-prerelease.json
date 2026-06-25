@@ -2,9 +2,10 @@
   "release-type": "python",
   "package-name": "litellm-pulse",
   "include-component-in-tag": false,
-  "prerelease": false,
-  "pull-request-title-pattern": "release(litellm-pulse): ${version}",
-  "extra-label": "type: release",
+  "prerelease": true,
+  "prerelease-type": "dev",
+  "pull-request-title-pattern": "prerelease(litellm-pulse): ${version}",
+  "extra-label": "type: prerelease",
   "include-commit-authors": true,
   "changelog-sections": [
     { "type": "feat", "section": "✨ Features", "hidden": false },

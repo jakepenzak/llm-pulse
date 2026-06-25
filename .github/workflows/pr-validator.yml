@@ -26,7 +26,7 @@ jobs:
       - name: Validate PR Title
         id: validate_pr_title
         run: |
-          if [[ ! "$PR_TITLE" =~ ^(build|chore|ci|docs|feat|fix|perf|refactor|revert|style|test|release)(\(.+\))?!?:\ .+ ]]; then
+          if [[ ! "$PR_TITLE" =~ ^(build|chore|ci|docs|feat|fix|perf|refactor|revert|style|test|release|prerelease)(\(.+\))?!?:\ .+ ]]; then
             echo "INVALID_TITLE=true" >> $GITHUB_ENV
             echo "PR title does not follow the required format: `<type>[optional scope]: description`"
           else

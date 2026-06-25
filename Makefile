@@ -6,7 +6,6 @@ help:
 	@printf "   venv            Create/sync virtual environment and install hooks.\n"
 	@printf "   tests           Run tests with pytest.\n"
 	@printf "   coverage        Serve coverage report at http://localhost:8080.\n"
-	@printf "   run             Run the server locally.\n"
 	@printf "   help            Show this help message.\n"
 
 venv:
@@ -17,10 +16,6 @@ venv:
 tests:
 	@echo "Running tests with pytest..."
 	@uv run pytest tests/
-
-run:
-	@echo "Starting LiteLLM Pulse..."
-	@uv run litellm-pulse
 
 coverage:
 	@echo "Serving coverage report at http://localhost:8080 ..."
