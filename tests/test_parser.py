@@ -91,6 +91,18 @@ class TestEdgeCases:
         assert result == {"counter_zero": 0.0}
 
 
+def test_non_matching_lines_are_skipped():
+    text = "not:a:valid:metric line\n"
+    result = parse_prometheus_text(text)
+    assert result == {}
+
+
+def test_mixed_valid_and_invalid_lines():
+    text = "valid_metric 10\nnot:a:valid:line\nvalid_metric2 20\n"
+    result = parse_prometheus_text(text)
+    assert result == {"valid_metric": 10.0, "valid_metric2": 20.0}
+
+
 class TestLabelAwareParsing:
     def test_extracts_model_label(self):
         text = (
@@ -155,3 +167,22 @@ class TestLabelAwareParsing:
         text = 'litellm_total_tokens_metric_total{model="gpt-4o"} 1.5e5\n'
         result = parse_prometheus_text_with_labels(text)
         assert result == {"litellm_total_tokens_metric_total": {"gpt-4o": 150000.0}}
+
+    def test_skips_non_matching_lines(self):
+        text = "not a valid metric line\n"
+        result = parse_prometheus_text_with_labels(text)
+        assert result == {}
+
+    def test_skips_empty_labels(self):
+        text = "litellm_in_flight_requests 3.0\n"
+        result = parse_prometheus_text_with_labels(text)
+        assert result == {}
+
+    def test_skips_metrics_without_requested_label(self):
+        text = (
+            'litellm_total_tokens_metric_total{model="gpt-4o"} 100\n'
+            'litellm_spend_metric_total{team="alpha"} 1.5\n'
+        )
+        result = parse_prometheus_text_with_labels(text)
+        assert "litellm_total_tokens_metric_total" in result
+        assert "litellm_spend_metric_total" not in result

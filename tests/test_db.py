@@ -372,3 +372,7 @@ class TestModelSnapshots:
         assert deleted >= 1
         result = get_latest_model_metrics(db)
         assert result["requests"]["gpt-4o"] == 20.0
+
+    def test_store_empty_noop(self, db):
+        store_model_snapshots(db, 1000, {}, {}, False)
+        assert get_latest_model_metrics(db) == {}

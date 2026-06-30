@@ -1,4 +1,4 @@
-"""Tests for the FastAPI application endpoints."""
+"""Tests for the FastAPI application endpoints and app compat module."""
 
 from datetime import UTC, datetime
 from zoneinfo import ZoneInfo
@@ -6,23 +6,24 @@ from zoneinfo import ZoneInfo
 import pytest
 from httpx import ASGITransport, AsyncClient
 
-import litellm_pulse.app as app_module
-from litellm_pulse.app import app
+from litellm_pulse.api import app
+from litellm_pulse.config import Settings
+from litellm_pulse.scraper import Scraper
+
+TEST_METRICS_URL = "http://test-metrics:4000/metrics/"
+TEST_TZ = UTC
 
 
-@pytest.fixture
-def client_setup():
-    """Set up global state for testing without triggering lifespan."""
-    original_raw = app_module._raw_metrics.copy()
-    original_prev = app_module._previous_raw.copy()
-    original_last_scrape = app_module._last_scrape
-    original_last_error = app_module._last_error
-    original_db = app_module._db
-    original_history = app_module._history
-    original_raw_model = app_module._raw_model_metrics.copy()
-    original_prev_model = app_module._previous_raw_model_metrics.copy()
+def _make_test_settings(**overrides) -> Settings:
+    kwargs = {"metrics_url": TEST_METRICS_URL, "tz": TEST_TZ}
+    kwargs.update(overrides)
+    return Settings(**kwargs)
 
-    app_module._raw_metrics = {
+
+def _make_test_scraper(**overrides) -> Scraper:
+    s = _make_test_settings(**overrides)
+    scraper = Scraper(s)
+    scraper.raw_metrics = {
         "litellm_proxy_total_requests_metric_total": 100.0,
         "litellm_proxy_failed_requests_metric_total": 5.0,
         "litellm_total_tokens_metric_total": 50000.0,
@@ -37,30 +38,30 @@ def client_setup():
         "litellm_input_cached_tokens_metric_total": 8000.0,
         "litellm_input_cache_creation_tokens_metric_total": 2000.0,
     }
-    app_module._raw_model_metrics = {
+    scraper.raw_model_metrics = {
         "requests": {"gpt-4o": 80.0, "claude-sonnet": 20.0},
         "tokens": {"gpt-4o": 40000.0, "claude-sonnet": 10000.0},
         "cost": {"gpt-4o": 2.0, "claude-sonnet": 0.5},
     }
-    app_module._last_scrape = datetime.now(UTC)
-    app_module._last_error = None
-    app_module._db = None  # Disable DB so we don't need a real one
-
-    yield
-
-    app_module._raw_metrics = original_raw
-    app_module._previous_raw = original_prev
-    app_module._last_scrape = original_last_scrape
-    app_module._last_error = original_last_error
-    app_module._db = original_db
-    app_module._history = original_history
-    app_module._raw_model_metrics = original_raw_model
-    app_module._previous_raw_model_metrics = original_prev_model
+    scraper.last_scrape = datetime.now(UTC)
+    scraper.last_error = None
+    scraper.db = None
+    return scraper
 
 
 @pytest.fixture
-async def async_client(client_setup):
-    """Create an async HTTP client that talks to the app directly."""
+def scraper():
+    return _make_test_scraper()
+
+
+@pytest.fixture(autouse=True)
+def set_app_scraper(scraper):
+    app.state.scraper = scraper
+    yield
+
+
+@pytest.fixture
+async def async_client():
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://test") as client:
         yield client
@@ -76,22 +77,21 @@ class TestHealthEndpoint:
 
 class TestRootAndMetrics:
     @pytest.mark.asyncio
-    async def test_root_returns_summary(self, async_client):
+    async def test_root_returns_html(self, async_client):
         response = await async_client.get("/")
         assert response.status_code == 200
-        data = response.json()
-        assert data["requests"] == 100.0
-        assert data["cost"] == 2.50
-        assert data["tokens"] == 50000.0
-        assert data["source"] == app_module.METRICS_URL
+        assert "text/html" in response.headers["content-type"]
 
     @pytest.mark.asyncio
-    async def test_metrics_endpoint_matches_root(self, async_client):
+    async def test_metrics_endpoint(self, async_client):
         response = await async_client.get("/api/v1/metrics")
         assert response.status_code == 200
         data = response.json()
         assert data["requests"] == 100.0
         assert data["failed_requests"] == 5.0
+        assert data["cost"] == 2.50
+        assert data["tokens"] == 50000.0
+        assert data["source"] == TEST_METRICS_URL
 
     @pytest.mark.asyncio
     async def test_includes_last_scrape(self, async_client):
@@ -149,9 +149,9 @@ class TestIndividualMetric:
 
 class TestHistoryEndpoint:
     @pytest.mark.asyncio
-    async def test_history_no_db_no_memory(self, async_client):
-        app_module._history = None
-        app_module._db = None
+    async def test_history_no_db_no_memory(self, async_client, scraper):
+        scraper.history = None
+        scraper.db = None
         response = await async_client.get("/api/v1/history")
         assert response.status_code == 200
         data = response.json()
@@ -171,8 +171,8 @@ class TestRawEndpoint:
 
 class TestErrorState:
     @pytest.mark.asyncio
-    async def test_error_included_when_set(self, async_client):
-        app_module._last_error = "Connection refused"
+    async def test_error_included_when_set(self, async_client, scraper):
+        scraper.last_error = "Connection refused"
         response = await async_client.get("/api/v1/metrics")
         data = response.json()
         assert data["error"] == "Connection refused"
@@ -180,94 +180,71 @@ class TestErrorState:
 
 class TestTimezoneFormatting:
     @pytest.mark.asyncio
-    async def test_last_scrape_uses_configured_tz(self, async_client):
-        # _last_scrape is set to UTC in the fixture; verify the offset matches _TZ
+    async def test_last_scrape_uses_configured_tz(self, async_client, scraper):
         response = await async_client.get("/api/v1/metrics")
         data = response.json()
         ts = data["last_scrape"]
-        # Default _TZ is UTC at module load unless LITELLM_PULSE_TIMEZONE is set
-        expected_offset = datetime.now(app_module._TZ).strftime("%z")
-        # Convert +0000 -> +00:00 format as isoformat produces
+        expected_offset = datetime.now(scraper.settings.tz).strftime("%z")
         expected = f"{expected_offset[:3]}:{expected_offset[3:]}" if expected_offset else "+00:00"
         assert ts.endswith(expected)
 
     @pytest.mark.asyncio
     async def test_last_scrape_converts_to_non_utc_tz(self, async_client):
-        original_tz = app_module._TZ
-        try:
-            app_module._TZ = ZoneInfo("America/New_York")
-            response = await async_client.get("/api/v1/metrics")
-            data = response.json()
-            ts = data["last_scrape"]
-            # In June (EDT) offset is -04:00; in Jan (EST) it's -05:00
-            assert ts.endswith("-04:00") or ts.endswith("-05:00")
-        finally:
-            app_module._TZ = original_tz
+        ny_scraper = _make_test_scraper(tz=ZoneInfo("America/New_York"), tz_name="America/New_York")
+        app.state.scraper = ny_scraper
+        response = await async_client.get("/api/v1/metrics")
+        data = response.json()
+        ts = data["last_scrape"]
+        assert ts.endswith("-04:00") or ts.endswith("-05:00")
 
     @pytest.mark.asyncio
     async def test_get_metric_last_scrape_uses_tz(self, async_client):
-        original_tz = app_module._TZ
-        try:
-            app_module._TZ = ZoneInfo("America/New_York")
-            response = await async_client.get("/api/v1/metrics/cost")
-            data = response.json()
-            ts = data["last_scrape"]
-            assert ts.endswith("-04:00") or ts.endswith("-05:00")
-        finally:
-            app_module._TZ = original_tz
+        ny_scraper = _make_test_scraper(tz=ZoneInfo("America/New_York"), tz_name="America/New_York")
+        app.state.scraper = ny_scraper
+        response = await async_client.get("/api/v1/metrics/cost")
+        data = response.json()
+        ts = data["last_scrape"]
+        assert ts.endswith("-04:00") or ts.endswith("-05:00")
 
 
 class TestWindowBoundariesWithTimezone:
     def test_start_of_day_respects_tz(self, monkeypatch):
-        from litellm_pulse import app as app_mod
+        from litellm_pulse import scraper as scraper_mod
 
-        original_tz = app_mod._TZ
-        try:
-            # Use America/New_York. If it's 04:00 UTC, that's 00:00 EDT (previous day).
-            # We mock datetime.now to a fixed value to make the test deterministic.
-            app_mod._TZ = ZoneInfo("America/New_York")
+        scraper = _make_test_scraper(tz=ZoneInfo("America/New_York"), tz_name="America/New_York")
 
-            fixed_utc = datetime(2025, 6, 21, 4, 0, 0, tzinfo=UTC)
+        fixed_utc = datetime(2025, 6, 21, 4, 0, 0, tzinfo=UTC)
 
-            class FakeDatetime:
-                @classmethod
-                def now(cls, tz=None):
-                    if tz is None:
-                        return fixed_utc.replace(tzinfo=None)
-                    return fixed_utc.astimezone(tz)
+        class FakeDatetime:
+            @classmethod
+            def now(cls, tz=None):
+                if tz is None:
+                    return fixed_utc.replace(tzinfo=None)
+                return fixed_utc.astimezone(tz)
 
-            monkeypatch.setattr(app_mod, "datetime", FakeDatetime)
+        monkeypatch.setattr(scraper_mod, "datetime", FakeDatetime)
 
-            start = app_mod._start_of_day()
-            # 00:00 EDT on June 21 = 04:00 UTC on June 21
-            assert start == int(datetime(2025, 6, 21, 4, 0, 0, tzinfo=UTC).timestamp())
-        finally:
-            app_mod._TZ = original_tz
+        start = scraper._start_of_day()
+        assert start == int(datetime(2025, 6, 21, 4, 0, 0, tzinfo=UTC).timestamp())
 
     def test_start_of_month_respects_tz(self, monkeypatch):
-        from litellm_pulse import app as app_mod
+        from litellm_pulse import scraper as scraper_mod
 
-        original_tz = app_mod._TZ
-        try:
-            app_mod._TZ = ZoneInfo("America/New_York")
+        scraper = _make_test_scraper(tz=ZoneInfo("America/New_York"), tz_name="America/New_York")
 
-            # 02:00 UTC on July 1 = 22:00 EDT on June 30 -> "today" is still June 30 in NY
-            fixed_utc = datetime(2025, 7, 1, 2, 0, 0, tzinfo=UTC)
+        fixed_utc = datetime(2025, 7, 1, 2, 0, 0, tzinfo=UTC)
 
-            class FakeDatetime:
-                @classmethod
-                def now(cls, tz=None):
-                    if tz is None:
-                        return fixed_utc.replace(tzinfo=None)
-                    return fixed_utc.astimezone(tz)
+        class FakeDatetime:
+            @classmethod
+            def now(cls, tz=None):
+                if tz is None:
+                    return fixed_utc.replace(tzinfo=None)
+                return fixed_utc.astimezone(tz)
 
-            monkeypatch.setattr(app_mod, "datetime", FakeDatetime)
+        monkeypatch.setattr(scraper_mod, "datetime", FakeDatetime)
 
-            start = app_mod._start_of_month()
-            # Start of June in NY = 00:00 EDT June 1 = 04:00 UTC June 1
-            assert start == int(datetime(2025, 6, 1, 4, 0, 0, tzinfo=UTC).timestamp())
-        finally:
-            app_mod._TZ = original_tz
+        start = scraper._start_of_month()
+        assert start == int(datetime(2025, 6, 1, 4, 0, 0, tzinfo=UTC).timestamp())
 
 
 class TestHistoryTimezoneInMemory:
@@ -275,36 +252,29 @@ class TestHistoryTimezoneInMemory:
     async def test_in_memory_history_converts_timestamp(self, async_client):
         from collections import deque
 
-        original_tz = app_module._TZ
-        original_history = app_module._history
-        try:
-            app_module._TZ = ZoneInfo("America/New_York")
-            app_module._history = deque(
-                [
-                    {
-                        "ts": int(datetime(2025, 6, 21, 12, 0, 0, tzinfo=UTC).timestamp()),
-                        "is_reset": False,
-                        "requests": 100.0,
-                        "requests_delta": 10.0,
-                    }
-                ],
-                maxlen=168,
-            )
-            app_module._db = None
+        ny_scraper = _make_test_scraper(tz=ZoneInfo("America/New_York"), tz_name="America/New_York")
+        ny_scraper.history = deque(
+            [
+                {
+                    "ts": int(datetime(2025, 6, 21, 12, 0, 0, tzinfo=UTC).timestamp()),
+                    "is_reset": False,
+                    "requests": 100.0,
+                    "requests_delta": 10.0,
+                }
+            ],
+            maxlen=168,
+        )
+        ny_scraper.db = None
+        app.state.scraper = ny_scraper
 
-            response = await async_client.get("/api/v1/history")
-            data = response.json()
-            assert data["source"] == "memory"
-            assert data["count"] == 1
-            ts = data["snapshots"][0]["timestamp"]
-            # UTC 12:00 in June (EDT) is 08:00 local
-            assert "08:00:00" in ts
-            assert "-04:00" in ts
-            # ts field should not leak
-            assert "ts" not in data["snapshots"][0]
-        finally:
-            app_module._TZ = original_tz
-            app_module._history = original_history
+        response = await async_client.get("/api/v1/history")
+        data = response.json()
+        assert data["source"] == "memory"
+        assert data["count"] == 1
+        ts = data["snapshots"][0]["timestamp"]
+        assert "08:00:00" in ts
+        assert "-04:00" in ts
+        assert "ts" not in data["snapshots"][0]
 
 
 class TestModelsEndpoint:
@@ -334,25 +304,22 @@ class TestModelsEndpoint:
         assert "requests_daily" not in gpt4o or gpt4o.get("requests_daily", 0.0) == 0.0
 
     @pytest.mark.asyncio
-    async def test_empty_model_metrics(self, async_client):
-        app_module._raw_model_metrics = {}
+    async def test_empty_model_metrics(self, async_client, scraper):
+        scraper.raw_model_metrics = {}
         response = await async_client.get("/api/v1/models")
         data = response.json()
         assert data["models"] == []
         assert data["last_scrape"] is not None
 
     @pytest.mark.asyncio
-    async def test_models_with_db_aggregates(self, async_client, tmp_path):
+    async def test_models_with_db_aggregates(self, async_client, tmp_path, scraper):
         import time
 
-        from litellm_pulse.db import (
-            open_db,
-            store_model_snapshots,
-        )
+        from litellm_pulse.db import open_db, store_model_snapshots
 
         db_path = str(tmp_path / "test_models_endpoint.db")
         conn = open_db(db_path)
-        app_module._db = conn
+        scraper.db = conn
 
         ts = int(time.time())
         raw = {"requests": {"gpt-4o": 100.0}, "cost": {"gpt-4o": 5.0}}
@@ -368,12 +335,15 @@ class TestModelsEndpoint:
             assert gpt4o["cost_daily"] == 0.5
         finally:
             conn.close()
-            app_module._db = None
+            scraper.db = None
 
 
 class TestCLI:
     def test_build_arg_parser_has_all_flags(self):
-        parser = app_module._build_arg_parser()
+        from litellm_pulse.config import Settings, build_arg_parser
+
+        env_settings = Settings.from_env()
+        parser = build_arg_parser(env_settings)
         actions = {a.dest for a in parser._actions if a.dest != "help"}
         expected = {
             "metrics_url",
@@ -392,84 +362,61 @@ class TestCLI:
         assert actions == expected
 
     def test_log_level_lowercase_accepted(self):
-        parser = app_module._build_arg_parser()
+        from litellm_pulse.config import Settings, build_arg_parser
+
+        settings = Settings()
+        parser = build_arg_parser(settings)
         args = parser.parse_args(["--log-level", "info"])
         assert args.log_level == "INFO"
 
     def test_log_level_uppercase_accepted(self):
-        parser = app_module._build_arg_parser()
+        from litellm_pulse.config import Settings, build_arg_parser
+
+        settings = Settings()
+        parser = build_arg_parser(settings)
         args = parser.parse_args(["--log-level", "INFO"])
         assert args.log_level == "INFO"
 
     def test_invalid_log_level_rejected(self):
-        parser = app_module._build_arg_parser()
+        from litellm_pulse.config import Settings, build_arg_parser
+
+        settings = Settings()
+        parser = build_arg_parser(settings)
         with pytest.raises(SystemExit):
             parser.parse_args(["--log-level", "invalid"])
 
-    def test_cli_overrides_env_defaults(self, monkeypatch):
+    def test_settings_from_env_respects_env(self, monkeypatch):
         monkeypatch.setenv("LITELLM_PULSE_PORT", "9999")
-        import importlib
+        from litellm_pulse.config import Settings
 
-        import litellm_pulse.app as app_mod
-
-        importlib.reload(app_mod)
-
-        original_port = app_mod.PORT
-        assert str(original_port) == "9999"
-
-        parser = app_mod._build_arg_parser()
-        args = parser.parse_args(["--port", "7777"])
-        assert str(args.port) == "7777"
-
+        s = Settings.from_env()
+        assert s.port == 9999
         monkeypatch.delenv("LITELLM_PULSE_PORT", raising=False)
 
     def test_main_applies_cli_values(self, monkeypatch):
         monkeypatch.setenv("LITELLM_PULSE_PORT", "9999")
-        import importlib
+        from litellm_pulse.config import Settings, settings_from_args
 
-        import litellm_pulse.app as app_mod
+        env_settings = Settings.from_env()
+        from litellm_pulse.config import build_arg_parser
 
-        importlib.reload(app_mod)
-
-        with monkeypatch.context() as m:
-            m.setattr("uvicorn.run", lambda *a, **kw: None)
-            app_mod.main(["--port", "7777", "--log-level", "debug"])
-
-        assert str(app_mod.PORT) == "7777"
-        assert app_mod.LOG_LEVEL == "DEBUG"
-
+        parser = build_arg_parser(env_settings)
+        args = parser.parse_args(["--port", "7777", "--log-level", "debug"])
+        settings = settings_from_args(args)
+        assert settings.port == 7777
+        assert settings.log_level == "DEBUG"
         monkeypatch.delenv("LITELLM_PULSE_PORT", raising=False)
 
-    def test_history_size_reenables_buffer_from_none(self, monkeypatch):
-        monkeypatch.setenv("LITELLM_PULSE_HISTORY_SIZE", "0")
-        import importlib
 
-        import litellm_pulse.app as app_mod
+class TestAppModuleCompat:
+    def test_app_module_imports_version_and_main(self):
+        from litellm_pulse.app import __version__, main
 
-        importlib.reload(app_mod)
+        assert __version__ is not None
+        assert callable(main)
 
-        assert app_mod._history is None
+    def test_app_module_exports(self):
+        from litellm_pulse.app import __all__
 
-        with monkeypatch.context() as m:
-            m.setattr("uvicorn.run", lambda *a, **kw: None)
-            app_mod.main(["--history-size", "100"])
-
-        assert app_mod._history is not None
-        assert app_mod._history.maxlen == 100
-
-    def test_history_size_disables_buffer_from_positive(self, monkeypatch):
-        monkeypatch.setenv("LITELLM_PULSE_HISTORY_SIZE", "50")
-        import importlib
-
-        import litellm_pulse.app as app_mod
-
-        importlib.reload(app_mod)
-
-        assert app_mod._history is not None
-        assert app_mod._history.maxlen == 50
-
-        with monkeypatch.context() as m:
-            m.setattr("uvicorn.run", lambda *a, **kw: None)
-            app_mod.main(["--history-size", "0"])
-
-        assert app_mod._history is None
+        assert "__version__" in __all__
+        assert "main" in __all__

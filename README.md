@@ -190,9 +190,13 @@ Each tracked metric maps a friendly name to a Prometheus metric name. Override a
 
 ## API Endpoints
 
-### `GET /` or `GET /api/v1/metrics`
+### `GET /`
 
-Returns all tracked metrics: cumulative totals, daily/weekly/monthly aggregates, and metadata.
+Serves a built-in web dashboard showing key metrics at a glance — spend, tokens, requests, cache stats, and a per-model breakdown table. Auto-refreshes every 30 seconds. No extra setup required.
+
+### `GET /api/v1/metrics`
+
+Returns all tracked metrics as JSON: cumulative totals, daily/weekly/monthly aggregates, and metadata.
 
 ```json
 {

@@ -1,0 +1,231 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>LiteLLM Pulse</title>
+<style>
+  :root {
+    --bg: #0d1117;
+    --card: #161b22;
+    --border: #30363d;
+    --text: #c9d1d9;
+    --muted: #8b949e;
+    --green: #3fb950;
+    --blue: #58a6ff;
+    --orange: #d2991d;
+    --red: #f85149;
+    --purple: #a371f7;
+  }
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    min-height: 100vh;
+    padding: 24px;
+  }
+  .container { max-width: 960px; margin: 0 auto; }
+  header {
+    display: flex; align-items: center; gap: 12px;
+    margin-bottom: 32px; padding-bottom: 16px;
+    border-bottom: 1px solid var(--border);
+  }
+  header h1 { font-size: 1.5rem; font-weight: 600; }
+  header .status { margin-left: auto; font-size: 0.8rem; padding: 2px 8px; border-radius: 12px; }
+  .status.ok { background: var(--green); color: #000; }
+  .status.error { background: var(--red); color: #fff; }
+  .status.loading { background: var(--border); color: var(--muted); }
+
+  .cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 16px; margin-bottom: 32px; }
+  .card {
+    background: var(--card); border: 1px solid var(--border); border-radius: 8px;
+    padding: 16px; display: flex; flex-direction: column; gap: 4px;
+  }
+  .card .label { font-size: 0.8rem; color: var(--muted); text-transform: uppercase; letter-spacing: 0.5px; }
+  .card .value { font-size: 1.4rem; font-weight: 600; font-variant-numeric: tabular-nums; }
+  .card .value.cost { color: var(--green); }
+  .card .value.tokens { color: var(--blue); }
+  .card .value.cache { color: var(--purple); }
+  .card .value.requests { color: var(--orange); }
+  .card .sub { font-size: 0.75rem; color: var(--muted); }
+
+  .section { margin-bottom: 32px; }
+  .section h2 { font-size: 1.1rem; margin-bottom: 12px; color: var(--muted); }
+
+  table { width: 100%; border-collapse: collapse; }
+  th, td { text-align: right; padding: 8px 12px; border-bottom: 1px solid var(--border); font-variant-numeric: tabular-nums; }
+  th:first-child, td:first-child { text-align: left; }
+  th { color: var(--muted); font-weight: 500; font-size: 0.8rem; text-transform: uppercase; }
+  td { color: var(--text); font-size: 0.9rem; }
+  tr:hover td { background: rgba(255,255,255,0.02); }
+
+  .error-banner {
+    background: rgba(248, 81, 73, 0.15); border: 1px solid var(--red);
+    border-radius: 8px; padding: 12px 16px; margin-bottom: 24px;
+    color: var(--red); font-size: 0.85rem;
+  }
+
+  .footer {
+    margin-top: 32px; padding-top: 16px; border-top: 1px solid var(--border);
+    font-size: 0.75rem; color: var(--muted); display: flex; justify-content: space-between;
+  }
+</style>
+</head>
+<body>
+<div class="container">
+  <header>
+    <h1>LiteLLM Pulse</h1>
+    <span id="status" class="status loading">loading</span>
+  </header>
+
+  <div id="error" class="error-banner" style="display:none"></div>
+
+  <div class="section">
+    <h2>Spend</h2>
+    <div class="cards">
+      <div class="card"><span class="label">Cost Today</span><span id="cost_daily" class="value cost">—</span></div>
+      <div class="card"><span class="label">Cost This Week</span><span id="cost_weekly" class="value cost">—</span></div>
+      <div class="card"><span class="label">Cost This Month</span><span id="cost_monthly" class="value cost">—</span></div>
+      <div class="card"><span class="label">Total Cost</span><span id="cost" class="value cost">—</span></div>
+    </div>
+  </div>
+
+  <div class="section">
+    <h2>Tokens</h2>
+    <div class="cards">
+      <div class="card"><span class="label">Tokens Today</span><span id="tokens_daily" class="value tokens">—</span></div>
+      <div class="card"><span class="label">Tokens This Month</span><span id="tokens_monthly" class="value tokens">—</span></div>
+      <div class="card"><span class="label">Total Tokens</span><span id="tokens" class="value tokens">—</span><span class="sub">In: <span id="input_tokens">—</span> / Out: <span id="output_tokens">—</span></span></div>
+      <div class="card"><span class="label">Reasoning Tokens</span><span id="reasoning_tokens" class="value tokens">—</span></div>
+    </div>
+  </div>
+
+  <div class="section">
+    <h2>Requests</h2>
+    <div class="cards">
+      <div class="card"><span class="label">Total Requests</span><span id="requests" class="value requests">—</span></div>
+      <div class="card"><span class="label">Failed</span><span id="failed_requests" class="value requests">—</span></div>
+      <div class="card"><span class="label">In Flight</span><span id="in_flight_requests" class="value requests">—</span></div>
+    </div>
+  </div>
+
+  <div class="section">
+    <h2>Cache</h2>
+    <div class="cards">
+      <div class="card"><span class="label">Cache Hits Today</span><span id="cache_hits_daily" class="value cache">—</span></div>
+      <div class="card"><span class="label">Cached Tokens Today</span><span id="cached_tokens_daily" class="value cache">—</span></div>
+      <div class="card"><span class="label">Hit Rate</span><span id="cache_hit_rate" class="value cache">—</span></div>
+    </div>
+  </div>
+
+  <div class="section" id="models-section" style="display:none">
+    <h2>Per Model</h2>
+    <table>
+      <thead>
+        <tr>
+          <th>Model</th>
+          <th>Requests</th>
+          <th>Cost</th>
+          <th>Tokens</th>
+          <th>Cost (Daily)</th>
+          <th>Tokens (Daily)</th>
+        </tr>
+      </thead>
+      <tbody id="models-body"></tbody>
+    </table>
+  </div>
+
+  <div class="footer">
+    <span>Source: <span id="source">—</span></span>
+    <span>Last scrape: <span id="last_scrape">—</span></span>
+  </div>
+</div>
+
+<script>
+function formatNum(n) {
+  if (n == null) return '—';
+  return Number(n).toLocaleString(undefined, { maximumFractionDigits: 0 });
+}
+function formatCost(n) {
+  if (n == null) return '—';
+  return '$' + Number(n).toFixed(4);
+}
+function formatPct(n) {
+  if (n == null) return '—';
+  return Number(n).toFixed(1) + '%';
+}
+
+async function refresh() {
+  try {
+    const res = await fetch('/api/v1/metrics');
+    const d = await res.json();
+
+    document.getElementById('status').className = 'status ok';
+    document.getElementById('status').textContent = 'online';
+    document.getElementById('error').style.display = 'none';
+
+    document.getElementById('cost_daily').textContent = formatCost(d.cost_daily);
+    document.getElementById('cost_weekly').textContent = formatCost(d.cost_weekly);
+    document.getElementById('cost_monthly').textContent = formatCost(d.cost_monthly);
+    document.getElementById('cost').textContent = formatCost(d.cost);
+
+    document.getElementById('tokens_daily').textContent = formatNum(d.tokens_daily);
+    document.getElementById('tokens_monthly').textContent = formatNum(d.tokens_monthly);
+    document.getElementById('tokens').textContent = formatNum(d.tokens);
+    document.getElementById('input_tokens').textContent = formatNum(d.input_tokens);
+    document.getElementById('output_tokens').textContent = formatNum(d.output_tokens);
+    document.getElementById('reasoning_tokens').textContent = formatNum(d.reasoning_tokens);
+
+    document.getElementById('requests').textContent = formatNum(d.requests);
+    document.getElementById('failed_requests').textContent = formatNum(d.failed_requests);
+    document.getElementById('in_flight_requests').textContent = formatNum(d.in_flight_requests);
+
+    document.getElementById('cache_hits_daily').textContent = formatNum(d.cache_hits_daily);
+    document.getElementById('cached_tokens_daily').textContent = formatNum(d.cached_tokens_daily);
+    const totalCache = (d.cache_hits_daily || 0) + (d.cache_misses_daily || 0);
+    const hitRate = totalCache > 0 ? (d.cache_hits_daily / totalCache * 100) : 0;
+    document.getElementById('cache_hit_rate').textContent = formatPct(hitRate);
+
+    document.getElementById('source').textContent = d.source || '—';
+    document.getElementById('last_scrape').textContent = d.last_scrape || '—';
+
+    if (d.error) {
+      document.getElementById('error').style.display = 'block';
+      document.getElementById('error').textContent = 'Scrape error: ' + d.error;
+      document.getElementById('status').className = 'status error';
+      document.getElementById('status').textContent = 'error';
+    }
+
+    const modelsRes = await fetch('/api/v1/models');
+    const modelsData = await modelsRes.json();
+    const modelsSection = document.getElementById('models-section');
+    const modelsBody = document.getElementById('models-body');
+    if (modelsData.models && modelsData.models.length > 0) {
+      modelsSection.style.display = '';
+      modelsBody.innerHTML = modelsData.models.map(m => `
+        <tr>
+          <td>${m.model}</td>
+          <td>${formatNum(m.requests)}</td>
+          <td>${formatCost(m.cost)}</td>
+          <td>${formatNum(m.tokens)}</td>
+          <td>${formatCost(m.cost_daily)}</td>
+          <td>${formatNum(m.tokens_daily)}</td>
+        </tr>
+      `).join('');
+    } else {
+      modelsSection.style.display = 'none';
+    }
+  } catch (e) {
+    document.getElementById('status').className = 'status error';
+    document.getElementById('status').textContent = 'offline';
+    document.getElementById('error').style.display = 'block';
+    document.getElementById('error').textContent = 'Connection failed: ' + e.message;
+  }
+}
+
+refresh();
+setInterval(refresh, 30000);
+</script>
+</body>
+</html>
