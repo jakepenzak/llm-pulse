@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.3.0-dev.2](https://github.com/jakepenzak/litellm-pulse/compare/v0.3.0-dev.1...v0.3.0-dev.2) (2026-06-30)
+
+
+### 🛠 Refactoring
+
+* core architecture, project layout, and more comprehensive testing ([#27](https://github.com/jakepenzak/litellm-pulse/issues/27)) ([cf09bd0](https://github.com/jakepenzak/litellm-pulse/commit/cf09bd0d5572d452ce1865df6bfa93f446dddc4c))
+
 ## [0.3.0-dev.1](https://github.com/jakepenzak/litellm-pulse/compare/v0.3.0-dev...v0.3.0-dev.1) (2026-06-30)
 
 
