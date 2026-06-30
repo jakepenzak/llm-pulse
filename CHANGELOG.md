@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.3.0-dev.1](https://github.com/jakepenzak/litellm-pulse/compare/v0.3.0-dev...v0.3.0-dev.1) (2026-06-30)
+
+
+### 🐛 Bug Fixes
+
+* extra prometheus model fields leaking through api ([#25](https://github.com/jakepenzak/litellm-pulse/issues/25)) ([7324d96](https://github.com/jakepenzak/litellm-pulse/commit/7324d9688bb9cfe76173ca8b7a6226d2d8e7fbcb))
+
 ## [0.3.0-dev](https://github.com/jakepenzak/litellm-pulse/compare/v0.2.2...v0.3.0-dev) (2026-06-25)
 
 
